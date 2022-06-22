@@ -2,8 +2,9 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <sstream>
 
-#include "supercomplex.hpp"
+#include "..\supercomplex.hpp"
 
 using namespace std;
 using namespace supercomplex;
@@ -24,7 +25,7 @@ std::string represent_char(char ch)
 	else if (ch == '\n') stream <<  "\\n";
 	else if (ch == '\t') stream << "\\t";
 	else if (ch == '\\') stream << "\\\\";
-	else if (ch == '\'') stream << "\'";
+	else if (ch == '\'') stream << "\\'";
 	else if ((ch >= ' ') && (ch < '\x7f')) stream << ch;
 	else 
 	{
@@ -61,18 +62,20 @@ void ranges(std::basic_ostream<char>& out, const std::basic_string<char>& name, 
 
 int cpp_codegen(std::basic_ostream<char>& out, const supercomplex::lexer<char, t_info>& automaton)
 {
+	out << "#include <fstream>" << std::endl;
 	out << "#include <iostream>" << std::endl;
 	out << "#include <sstream>" << std::endl;
 	out << "#include <exception>" << std::endl;
 	out << "#include <stdexcept>" << std::endl;
 	
-	constexpr std::string token_type_class = "token_type";
-	constexpr std::string token_class = "token";
-	constexpr std::string iterator_class = "lexer_iterator";
+	std::string token_type_class = "token_type";
+	std::string token_class = "token";
+	std::string iterator_class = "lexer_iterator";
 
-	out << "enum class " << token_type_class << " : int {" << std::endl;
+	out << "enum class " << token_type_class << " : int {\n    ENDOFFILE = -1," << std::endl;
 	std::unordered_set<std::string> visited_terminals;
-	
+	std::unordered_set<std::string> visited_terminals2;
+
 	/* We find all terminal nodes with names to populate the enum for token types. */
 	int index = 0;
 	for (auto&& state : automaton.states())
@@ -85,6 +88,20 @@ int cpp_codegen(std::basic_ostream<char>& out, const supercomplex::lexer<char, t
 	}
 
 	out << "};" << std::endl << std::endl;
+
+	out << "const char* token_names[] = {\n    \"ENDOFFILE\"," << std::endl;
+	index = 0;
+	for (auto&& state : automaton.states())
+	{
+		if (state.terminal && !state.terminal_info.skip && visited_terminals2.find(state.terminal_info.name) == visited_terminals2.end())
+		{
+			out << "    \"" << state.terminal_info.name << "\"," << std::endl;
+			visited_terminals2.insert(state.terminal_info.name);
+		}
+	}
+
+	out << "};" << std::endl << std::endl;
+
 
 	out << "struct " << token_class << " {" << std::endl;
 	out << "    "<< token_type_class <<" type;" << std::endl;
@@ -175,7 +192,7 @@ int cpp_codegen(std::basic_ostream<char>& out, const supercomplex::lexer<char, t
 	out << "                break;" << std::endl;
 	out << "        }" << std::endl;
 
-	out << "        state_ = -1;" << std::endl;
+	out << "        state_ = -1;\nvalue_ = value_type{ token_type::ENDOFFILE, "" };" << std::endl;
 	out << "    }" << std::endl;
 	
 	out << "private:" << std::endl;
@@ -216,15 +233,57 @@ int main()
 	*/
 	lexer_generator<char, t_info> lex_gen;
 	lex_gen 
-		<< prod("ARR_OPEN", "\\[")
-		<< prod("ARR_CLOSE", "\\]")
-		<< prod("OBJ_OPEN", "{")
-		<< prod("OBJ_CLOSE", "}")		
-		<< prod("LITERAL", "true|false|null")
+		<< prod("OPEN_BRACKET", "\\[")
+		<< prod("CLOSE_BRACKET", "\\]")
+		<< prod("OPEN_PAREN", "\\(")
+		<< prod("CLOSE_PAREN", "\\)")
+		<< prod("OPEN_BRACKET", "{")
+		<< prod("CLOSE_BRACKET", "}")	
+		<< prod("PERIOD", ".")
+		<< prod("AMP", "&")
+		<< prod("PIPE", "\\|")
+		<< prod("AND", "&&")
+		<< prod("OR", "\\|\\|")
+		<< prod("PLUS", "\\+")
+		<< prod("MINUS", "\\-")
+		<< prod("TILDE", "~")
+		<< prod("MUL", "\\*")
+		<< prod("DIV", "/")
+		<< prod("BANG", "!")
+		<< prod("MOD", "%")
+		<< prod("ASSIGN", "=")
+		<< prod("ADD_ASSIGN", "\\+=")
+		<< prod("SUB_ASSIGN", "\\-=")
+		<< prod("MUL_ASSIGN", "\\*=")
+		<< prod("DIV_ASSIGN", "/=")
+		<< prod("AND_ASSIGN", "&=")
+		<< prod("OR_ASSIGN", "\\|=")
+		<< prod("XOR_ASSIGN", "^=")
+		<< prod("MOD_ASSIGN", "%=")
+		<< prod("SHL_ASSIGN", "<<=")
+		<< prod("SHR_ASSIGN", ">>=")
+		<< prod("XOR", "^")
+		<< prod("QMARK", "\\?")
+		<< prod("SHL", "<<")
+		<< prod("SHR", ">>")
+		<< prod("LT", "<")
+		<< prod("GT", ">")
+		<< prod("LE", "<=")
+		<< prod("GE", ">=")
+		<< prod("NE", "!=")
+		<< prod("EQ", "==")
+		<< prod("PREPROCESS_LINE", "#[^\n]*")
+		<< prod("IDENT", "[_a-zA-Z][_0-9a-zA-Z]*")
+		<< prod("LITERAL", "auto|double|int|struct|break|else|long|switch|case|enum|register|typedef|char|extern|return|union|const|float|short|unsigned|continue|for|signed|void|default|goto|sizeof|volatile|do|if|static|while|_Bool|_Imaginary|restrict|_Complex|inline|_Alignas|_Generic|_Thread_local|_Alignof|_Noreturn|_Atomic|_Static_assert")
 		<< prod("COMMA", ",")
 		<< prod("COLON", ":")				
-		<< prod("STRING", "\"(\\\\([\"\\\\/bfrnt]|u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])|[^\"\\\\\0-\x1f])*\""s)				
-		<< prod("NUMBER", "-?(0|[1-9][0-9]*)(.[0-9]+)?([Ee][+\\-]?(0|[1-9][0-9]*))?")
+		<< prod("SEMICOLON", ";")
+		<< prod("STRING", "(L|u|U|u8)?R?\"(\\\\([\"'\\\\/bfrntav0]|[0-7][0-7][0-7]|x[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]|u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])|[^\"\\\\\0-\x1f])*\"s?"s)
+		<< prod("CHAR", "(L|u|U|u8)?R?'(\\\\([\"'\\\\/bfrntav0]|[0-7][0-7][0-7]|x[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]|u[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])|[^\'\\\\\0-\x1f])*'"s)
+		<< prod("NUMBER", "-?(0|[1-9][0-9]*)(.[0-9]+)?([Ee][+\\-]?(0|[1-9][0-9]*))?(u|U)?(d|f|LL|L)?")
+//		<< skip("/\\*[^\\*]*\\*/")
+		<< skip("/\\*[^\\*]*(\\*[^/][^\\*]*)*\\*/")
+		<< skip("//[^\n\r]*[\r\n]")
 		<< skip("[ \t\n\r]+")
 		;
 
