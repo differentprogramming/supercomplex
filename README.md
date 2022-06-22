@@ -1,3 +1,7 @@
+Josh Scholar:  note I intend to make two main changes on this:
+1) make it use Unicode Graphemes as the character type (and also add unicode character properties)
+2) make it run without generating code - in the same process as the specification
+
 supercomplex
 ============
 
